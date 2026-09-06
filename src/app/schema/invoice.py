@@ -19,7 +19,21 @@ class GenerateRequest(BaseModel):
 
 
 class PaymentCreate(BaseModel):
-    amount: Decimal = Field(gt=0, decimal_places=2)
+    """What the tenant handed over.
+
+    `amount` is denominated in `currency`, which is the base currency unless stated —
+    so an existing base-currency client keeps working unchanged.
+    """
+
+    amount: Decimal = Field(gt=0, decimal_places=2, description="amount handed over, in `currency`")
+    currency: str | None = Field(
+        default=None, min_length=3, max_length=3,
+        description="ISO code of the cash handed over; the base currency when omitted",
+    )
+    fx_rate: Decimal | None = Field(
+        default=None, gt=0, decimal_places=6,
+        description="units of `currency` per 1 base unit; the configured house rate when omitted",
+    )
     method: str = Field(default="cash", max_length=30)
     note: str | None = Field(default=None, max_length=255)
 
@@ -28,7 +42,11 @@ class PaymentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    amount: Decimal
+    amount: Decimal  # settled, always in base_currency — this is what moved the balance
+    base_currency: str
+    tendered_amount: Decimal
+    tendered_currency: str
+    fx_rate: Decimal
     method: str
     note: str | None
     recorded_by_id: int | None

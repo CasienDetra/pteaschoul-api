@@ -95,7 +95,9 @@ def record_reading(invoice_id: int, _staff: StaffUser, db: DbSession, payload: R
 
 
 @router.post("/{invoice_id}/payments", response_model=InvoiceOut,
-             summary="Take a full or partial payment")
+             summary="Take a full or partial payment, in any accepted currency")
 def pay(invoice_id: int, staff: StaffUser, db: DbSession, payload: PaymentCreate) -> InvoiceOut:
+    """`amount` is denominated in `currency` (the base currency unless given). The balance
+    moves by the converted base amount; the tender and the rate stay on the payment row."""
     invoice = billing.get_invoice_or_404(db, invoice_id)
-    return billing.pay_invoice(db, invoice, payload.amount, payload.method, payload.note, staff)
+    return billing.pay_invoice(db, invoice, payload, staff)

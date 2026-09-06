@@ -29,6 +29,27 @@ Opening meter faces come from the tenant's `electricity_start` / `water_start` a
 then from their own previous invoice. Scoped to the tenant, not the room, so an incoming
 tenant never inherits the previous occupant's unbilled units.
 
+## Currencies
+
+Bills are priced, totalled and settled in `BASE_CURRENCY`. A tenant may hand over anything
+listed in `EXCHANGE_RATES` — `{"KHR": 4100}` reads as units per 1 USD, a house rate rather
+than a live feed:
+
+```
+POST /invoices/12/payments   {"amount": "41000", "currency": "KHR"}
+→ tendered 41000.00 KHR at 4100.000000, amount 10.00 USD
+```
+
+`amount` is denominated in `currency`, which defaults to the base — so a base-currency client
+needs no changes. Only the converted base `amount` moves the balance, which keeps
+`balance_due` single-currency and partial payments in different currencies adding up. Both
+sides of the conversion stay on the payment row, so the cash box reconciles at the rate that
+was actually applied; pass `fx_rate` to record a rate other than the configured one.
+
+A tender worth more than the balance is refused, and the refusal says how much riel would
+have cleared it. `GET /` lists what is accepted, and `GET /rooms/reports/monthly` splits the
+month's cash by tendered currency — its `settled` column sums to `collected`.
+
 ## Quick start
 
 ```bash
@@ -76,7 +97,7 @@ All under `/api/v1`. Only `POST /login` is open.
 | GET/PUT/DELETE | `/users/{id}` | PUT/DELETE admin only |
 | POST | `/rooms` · GET `/rooms` | filters: `is_available`, `min_price`, `max_price`, `q` |
 | GET/PUT/DELETE | `/rooms/{id}` | DELETE admin only, refused while occupied or unpaid |
-| GET | `/rooms/reports/monthly` | billed vs collected vs outstanding, plus kWh and m³ |
+| GET | `/rooms/reports/monthly` | billed vs collected vs outstanding, kWh and m³, cash split by tendered currency |
 | POST | `/tenants` | check in; send `email` + `password` to also issue a login |
 | GET | `/tenants` · GET `/tenants/{id}` | |
 | DELETE | `/tenants/{id}` | check out: frees the room, disables the login, reports the balance |
@@ -84,23 +105,27 @@ All under `/api/v1`. Only `POST /login` is open.
 | GET | `/invoices` | `month`, `year`, `room_id`, `tenant_id`, `status`, `overdue` |
 | GET | `/invoices/{id}` | itemised bill with its payment ledger |
 | PUT | `/invoices/{id}/reading` | record end-of-month meters |
-| POST | `/invoices/{id}/payments` | full or partial payment |
+| POST | `/invoices/{id}/payments` | full or partial payment, in the base currency or riel |
 | GET | `/invoices/scheduler-status` | jobs and next run time |
 
 ## Environment
 
 `DATABASE_URL`, `SECRET_KEY`, `ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`,
-`ELECTRICITY_RATE`, `WATER_RATE`, `CURRENCY`, `INVOICE_DUE_DAY`, `UPLOAD_DIR`, `LOG_LEVEL`.
-`POSTGRES_*` and `PGADMIN_*` are read by `docker-compose.yml` from the same file.
+`ELECTRICITY_RATE`, `WATER_RATE`, `BASE_CURRENCY`, `EXCHANGE_RATES`, `INVOICE_DUE_DAY`,
+`UPLOAD_DIR`, `LOG_LEVEL`. `POSTGRES_*` and `PGADMIN_*` are read by `docker-compose.yml`
+from the same file.
 
 Tariffs are knobs, not constants — set them to your real bill. Changing them affects
-future invoices only.
+future invoices only. The same goes for `EXCHANGE_RATES`: a recorded payment keeps the rate
+it was taken at.
 
 ## Known limits
 
 - **Whole-month billing.** A mid-month hand-over leaves the incoming tenant unbilled for
   that month; it is logged as a warning, not pro-rated.
 - **No late fees.** `overdue=true` derives lateness from `due_date`; no fee is charged.
+- **No change and no refunds.** A tender worth more than the balance is refused rather than
+  taken with change handed back, and there is no path to reverse a recorded payment.
 - **No meter rollover handling.** A reading below the opening face is rejected (`422`)
   rather than guessed at.
 - **In-memory scheduler.** A restart spanning the 1st past the 6-hour misfire window skips

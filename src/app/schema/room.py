@@ -29,10 +29,19 @@ class RoomOut(BaseModel):
     updated_at: datetime
 
 
+class TenderLine(BaseModel):
+    """What was physically taken in one currency, and what it settled to in the base."""
+
+    currency: str
+    payments: int
+    tendered: Decimal
+    settled: Decimal
+
+
 class MonthlyReport(BaseModel):
     month: int
     year: int
-    currency: str
+    base_currency: str
     rooms_total: int
     rooms_occupied: int
     invoices: int
@@ -41,3 +50,5 @@ class MonthlyReport(BaseModel):
     outstanding: Decimal
     electricity_units: Decimal
     water_units: Decimal
+    # one line per currency taken this period; the settled column sums to `collected`
+    tendered: list[TenderLine] = []

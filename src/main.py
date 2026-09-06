@@ -27,6 +27,8 @@ app = FastAPI(
     description=(
         "Rooms, tenants and monthly billing. A bill is **rent + metered electricity + "
         "metered water**; the tariff and rent in force are snapshotted onto every invoice.\n\n"
+        "Bills are totalled and settled in the base currency, but a tenant may hand over any "
+        "currency listed at `GET /` — the payment keeps the tender and the rate applied.\n\n"
         "Log in at `POST /api/v1/login`, then paste the `access_token` into **Authorize**."
     ),
     version="0.1.0",
@@ -44,5 +46,8 @@ def root() -> dict:
         "service": "Rental Room API",
         "docs": "/docs",
         "api": settings.API_PREFIX,
-        "currency": settings.CURRENCY,
+        # what a tenant may hand over, and at what house rate: a client renders its
+        # currency picker from this rather than hard-coding the pair
+        "base_currency": settings.BASE_CURRENCY,
+        "exchange_rates": settings.EXCHANGE_RATES,
     }

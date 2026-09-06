@@ -5,15 +5,32 @@ same arithmetic and status rules as production, and exercises them on every run.
 """
 
 import random
+from collections import Counter
 from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.app.config.config import settings
 from src.app.model import Invoice, InvoiceStatus, Role, Tenant, User, money
+from src.app.schema.invoice import PaymentCreate
 from src.app.services import billing
 from src.app.utils import color
+
+
+def _tender(amount: Decimal, method: str, note: str | None = None) -> PaymentCreate:
+    """Hand over `amount` of base-currency value, in a currency picked at random.
+
+    A foreign tender is the exactly converted figure, so a seeded bill still lands on the
+    status the caller intended instead of a cent short of it.
+    """
+    code = random.choice([*settings.EXCHANGE_RATES, *[settings.BASE_CURRENCY] * 2])
+    if code == settings.BASE_CURRENCY:
+        return PaymentCreate(amount=amount, method=method, note=note)
+    return PaymentCreate(
+        amount=money(amount * settings.EXCHANGE_RATES[code]), currency=code, method=method, note=note
+    )
 
 
 def _periods(months: int) -> list[tuple[int, int]]:
@@ -41,6 +58,7 @@ def seed_billing(db: Session, months: int = 3) -> int:
     db.commit()
 
     total = paid = partial = 0
+    tenders: Counter[str] = Counter()
     for year, month in periods:
         invoices = billing.generate_monthly_invoices(db, month, year)
         current = (year, month) == periods[-1]
@@ -54,18 +72,22 @@ def seed_billing(db: Session, months: int = 3) -> int:
                 invoice.water_prev + Decimal(random.randrange(2, 16)),
             )
             outcome = random.choices(["full", "partial", "none"], weights=[60, 25, 15])[0]
+            if outcome == "none":
+                continue
             if outcome == "full":
-                billing.pay_invoice(db, invoice, invoice.amount, "cash", None, staff)
+                tender = _tender(invoice.amount, "cash")
                 paid += 1
-            elif outcome == "partial":
-                half = money(invoice.amount / 2)
-                billing.pay_invoice(db, invoice, half, "bank_transfer", "part payment", staff)
+            else:
+                tender = _tender(money(invoice.amount / 2), "bank_transfer", "part payment")
                 partial += 1
+            billing.pay_invoice(db, invoice, tender, staff)
+            tenders[tender.currency or settings.BASE_CURRENCY] += 1
         color.ok(f"{year}-{month:02d}: {len(invoices)} invoice(s)"
                  + (" (current month, awaiting meter readings)" if current else ""))
 
     color.info(f"{total} invoices — {paid} paid, {partial} partial, "
                f"{total - paid - partial} outstanding")
+    color.info("tendered as " + ", ".join(f"{n} x {code}" for code, n in sorted(tenders.items())))
     return total
 
 

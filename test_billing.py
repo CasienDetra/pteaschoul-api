@@ -3,15 +3,19 @@
     uv run python test_billing.py     # or: uv run pytest test_billing.py
 
 No DB and no fixtures — Invoice totals are computed from plain in-memory values, so
-this fails the moment the billing arithmetic, the rounding, or the status transitions
-drift.
+this fails the moment the billing arithmetic, the rounding, the status transitions or
+the currency conversion drift.
 """
 
+from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 
+from fastapi import HTTPException
+
+from src.app.config.config import settings
 from src.app.model import Invoice, InvoiceStatus, money
-from src.app.services.billing import due_date_for, recalculate, sync_status
+from src.app.services.billing import due_date_for, recalculate, resolve_tender, sync_status
 
 
 def make(rent="200.00", e_prev="1000", e_curr="1150", w_prev="40", w_curr="49",
@@ -25,6 +29,27 @@ def make(rent="200.00", e_prev="1000", e_curr="1150", w_prev="40", w_curr="49",
         amount=Decimal("0"), amount_paid=Decimal(paid),
         status=InvoiceStatus.PENDING, due_date=date(2026, 4, 10),
     )
+
+
+@contextmanager
+def rates(**table: str):
+    """Swap in a known rate table: these checks must not ride on the deployment's own."""
+    original = settings.EXCHANGE_RATES
+    settings.EXCHANGE_RATES = {code: Decimal(value) for code, value in table.items()}
+    try:
+        yield
+    finally:
+        settings.EXCHANGE_RATES = original
+
+
+def refused(fn, *args) -> str:
+    """Call `fn`, assert it was rejected as unprocessable, and hand back the reason given."""
+    try:
+        fn(*args)
+    except HTTPException as exc:
+        assert exc.status_code == 422, exc.status_code
+        return exc.detail
+    raise AssertionError(f"{fn.__name__}{args} should have been refused")
 
 
 def test_total_is_rent_plus_metered_utilities():
@@ -100,6 +125,71 @@ def test_overdue_only_applies_to_unsettled_bills():
     inv.amount_paid = inv.amount
     sync_status(inv)
     assert inv.is_overdue is False
+
+
+def test_a_base_currency_tender_passes_straight_through():
+    tendered, code, rate, settled = resolve_tender(Decimal("50.00"))
+    assert code == settings.BASE_CURRENCY
+    assert rate == Decimal("1")
+    assert tendered == settled == Decimal("50.00")
+
+
+def test_a_riel_tender_converts_to_the_base_currency():
+    with rates(KHR="4100"):
+        tendered, code, rate, settled = resolve_tender(Decimal("200000"), "khr")  # lowercase too
+    assert (tendered, code, rate) == (Decimal("200000.00"), "KHR", Decimal("4100"))
+    assert settled == Decimal("48.78")  # 200000 / 4100 = 48.7804...
+
+
+def test_a_full_riel_tender_clears_the_bill_to_the_cent():
+    inv = recalculate(make())  # 242.90 due
+    with rates(KHR="4100"):
+        *_, settled = resolve_tender(inv.amount * Decimal("4100"), "KHR")
+    assert settled == inv.amount
+
+    inv.amount_paid = settled
+    assert sync_status(inv).status is InvoiceStatus.PAID
+    assert inv.balance_due == Decimal("0.00")
+
+
+def test_riel_conversion_rounds_half_up_like_every_other_total():
+    with rates(KHR="4100"):
+        *_, settled = resolve_tender(Decimal("512.50"), "KHR")  # 512.50 / 4100 = 0.125 exactly
+    assert settled == Decimal("0.13")
+
+
+def test_the_rate_actually_given_beats_the_house_rate():
+    # the cashier settled at 4000 that day; the ledger has to record what was really applied
+    with rates(KHR="4100"):
+        _, _, rate, settled = resolve_tender(Decimal("200000"), "KHR", Decimal("4000"))
+    assert rate == Decimal("4000")
+    assert settled == Decimal("50.00")
+
+
+def test_an_unaccepted_currency_is_refused():
+    with rates(KHR="4100"):
+        detail = refused(resolve_tender, Decimal("100"), "EUR")
+    assert "EUR" in detail and "KHR" in detail  # the refusal lists what it will take
+
+
+def test_riel_dust_that_rounds_to_nothing_is_refused():
+    with rates(KHR="4100"):
+        detail = refused(resolve_tender, Decimal("1"), "KHR")  # 1 riel is 0.0002 of a dollar
+    assert "0.00" in detail
+
+
+def test_a_rate_on_a_base_currency_tender_is_refused():
+    # silently dropping it would hide a client that has its currencies muddled
+    detail = refused(resolve_tender, Decimal("50.00"), settings.BASE_CURRENCY, Decimal("4100"))
+    assert "fx_rate" in detail
+
+
+def test_currency_config_is_normalised_case_insensitively():
+    from src.app.config.config import Settings
+
+    configured = Settings(BASE_CURRENCY="usd", EXCHANGE_RATES={"khr": "4100", "Usd": "1"})
+    assert configured.BASE_CURRENCY == "USD"
+    assert configured.EXCHANGE_RATES == {"KHR": Decimal("4100")}  # no rate against itself
 
 
 def test_due_date_rolls_into_the_following_month():

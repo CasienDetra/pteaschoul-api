@@ -5,8 +5,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.app.config.config import settings
-from src.app.model import Invoice, Room, Tenant
-from src.app.schema.room import MonthlyReport, RoomCreate, RoomUpdate
+from src.app.model import Invoice, Payment, Room, Tenant
+from src.app.schema.room import MonthlyReport, RoomCreate, RoomUpdate, TenderLine
 
 ZERO = Decimal("0.00")
 
@@ -91,8 +91,33 @@ def monthly_report(db: Session, month: int, year: int) -> MonthlyReport:
     ).one()
     count, billed, collected, elec, water = row
     return MonthlyReport(
-        month=month, year=year, currency=settings.CURRENCY,
+        month=month, year=year, base_currency=settings.BASE_CURRENCY,
         rooms_total=rooms_total, rooms_occupied=rooms_occupied, invoices=count,
         billed=billed, collected=collected, outstanding=Decimal(billed) - Decimal(collected),
         electricity_units=elec, water_units=water,
+        tendered=tender_breakdown(db, month, year),
     )
+
+
+def tender_breakdown(db: Session, month: int, year: int) -> list[TenderLine]:
+    """Cash actually taken this period, split by the currency it came in as.
+
+    Joined through the invoice so the split covers the same period as `collected`, which
+    it therefore sums to — that equality is what makes the cash box reconcilable.
+    """
+    rows = db.execute(
+        select(
+            Payment.tendered_currency,
+            func.count(Payment.id),
+            func.coalesce(func.sum(Payment.tendered_amount), 0),
+            func.coalesce(func.sum(Payment.amount), 0),
+        )
+        .join(Invoice, Payment.invoice_id == Invoice.id)
+        .where(Invoice.month == month, Invoice.year == year)
+        .group_by(Payment.tendered_currency)
+        .order_by(Payment.tendered_currency)
+    ).all()
+    return [
+        TenderLine(currency=code, payments=count, tendered=tendered, settled=settled)
+        for code, count, tendered, settled in rows
+    ]

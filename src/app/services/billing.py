@@ -20,8 +20,60 @@ from sqlalchemy.orm import Session
 from src.app.config.config import settings
 from src.app.config.logger import get_logger
 from src.app.model import Invoice, InvoiceStatus, Payment, Role, Tenant, User, money
+from src.app.schema.invoice import PaymentCreate
 
 log = get_logger(__name__)
+
+
+def accepted_currencies() -> list[str]:
+    """What a tenant may hand over: the base currency plus every configured house rate."""
+    return [settings.BASE_CURRENCY, *sorted(settings.EXCHANGE_RATES)]
+
+
+def resolve_tender(
+    amount: Decimal, currency: str | None = None, fx_rate: Decimal | None = None
+) -> tuple[Decimal, str, Decimal, Decimal]:
+    """Normalise a tender into (tendered, currency, rate, settled in base currency).
+
+    `fx_rate` is units of `currency` per 1 base unit, and is an argument rather than a plain
+    lookup because the rate the house actually gave on the day is the auditable fact — the
+    configured rate is only the default for when nobody says otherwise.
+    """
+    code = (currency or settings.BASE_CURRENCY).strip().upper()
+    tendered = money(amount)
+
+    if code == settings.BASE_CURRENCY:
+        if fx_rate is not None and fx_rate != 1:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, f"fx_rate does not apply to a {code} payment"
+            )
+        return tendered, code, Decimal("1"), tendered
+
+    if code not in settings.EXCHANGE_RATES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Cannot accept {code}; accepted: {', '.join(accepted_currencies())}",
+        )
+
+    rate = settings.EXCHANGE_RATES[code] if fx_rate is None else fx_rate
+    if rate <= 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "fx_rate must be positive")
+
+    settled = money(tendered / rate)
+    if settled <= 0:
+        # dust: less than half a base cent, so crediting it would move nothing
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"{tendered} {code} converts to {settled} {settings.BASE_CURRENCY} at {rate}",
+        )
+    return tendered, code, rate, settled
+
+
+def tender_label(tendered: Decimal, code: str, rate: Decimal, settled: Decimal) -> str:
+    """Both sides of the conversion, for error messages a cashier has to act on."""
+    if code == settings.BASE_CURRENCY:
+        return f"{settled} {code}"
+    return f"{tendered} {code} ({settled} {settings.BASE_CURRENCY} at {rate})"
 
 
 def due_date_for(month: int, year: int) -> date:
@@ -157,25 +209,30 @@ def record_reading(db: Session, invoice: Invoice, electricity_curr: Decimal, wat
     return invoice
 
 
-def pay_invoice(
-    db: Session, invoice: Invoice, amount: Decimal, method: str, note: str | None, actor: User | None
-) -> Invoice:
+def pay_invoice(db: Session, invoice: Invoice, payload: PaymentCreate, actor: User | None) -> Invoice:
+    """Take a tender in any accepted currency; only its base-currency value moves the balance."""
     if invoice.status is InvoiceStatus.PAID:
         raise HTTPException(status.HTTP_409_CONFLICT, "Invoice is already paid in full")
-    amount = money(amount)
-    if amount <= 0:
+
+    tendered, code, rate, settled = resolve_tender(payload.amount, payload.currency, payload.fx_rate)
+    if settled <= 0:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Payment must be positive")
-    if amount > invoice.balance_due:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            f"Payment {amount} exceeds the outstanding balance {invoice.balance_due}",
+    if settled > invoice.balance_due:
+        detail = (
+            f"Payment {tender_label(tendered, code, rate, settled)} exceeds the outstanding "
+            f"balance {invoice.balance_due} {settings.BASE_CURRENCY}"
         )
+        if code != settings.BASE_CURRENCY:
+            # the cashier's actual question is how much riel clears the bill, so answer it
+            detail += f" — {money(invoice.balance_due * rate)} {code} at this rate"
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail)
 
     db.add(Payment(
-        invoice_id=invoice.id, amount=amount, method=method, note=note,
+        invoice_id=invoice.id, amount=settled, tendered_amount=tendered, tendered_currency=code,
+        fx_rate=rate, method=payload.method, note=payload.note,
         recorded_by_id=actor.id if actor else None,
     ))
-    invoice.amount_paid = money(invoice.amount_paid + amount)
+    invoice.amount_paid = money(invoice.amount_paid + settled)
     sync_status(invoice)
     db.commit()
     db.refresh(invoice)
