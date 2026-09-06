@@ -62,6 +62,16 @@ uv run uvicorn src.main:app --reload
 ```
 
 Docs at http://localhost:8000/docs — log in, then paste the `access_token` into **Authorize**.
+ReDoc at `/redoc`, raw schema at `/openapi.json`.
+
+The same document is checked in as `docs/openapi.json` and `docs/openapi.yaml` (OpenAPI 3.1)
+for client codegen and Postman/Insomnia imports. It is generated from the route signatures,
+so regenerate it after touching a route:
+
+```bash
+uv run python -m src.export_openapi                  # both formats into docs/
+uv run python -m src.export_openapi --format yaml --server https://api.example.com
+```
 
 Seeded logins: `admin@example.com` / `admin123`, `john@rental.com` / `staff123`,
 `tenant1@rental.com` / `tenant123`. Seeder flags: `--rooms`, `--tenants`, `--months`,

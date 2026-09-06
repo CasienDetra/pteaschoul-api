@@ -1,0 +1,1869 @@
+openapi: 3.1.0
+info:
+  title: Rental Room API
+  description: 'Rooms, tenants and monthly billing. A bill is **rent + metered electricity + metered water**;
+    the tariff and rent in force are snapshotted onto every invoice.
+
+
+    Bills are totalled and settled in the base currency, but a tenant may hand over any currency listed
+    at `GET /` — the payment keeps the tender and the rate applied.
+
+
+    Log in at `POST /api/v1/login`, then paste the `access_token` into **Authorize**.'
+  version: 0.1.0
+paths:
+  /api/v1/login:
+    post:
+      tags:
+      - auth
+      summary: Log in (admin, staff or tenant)
+      description: The only open endpoint. Tenants use the same route as staff — role comes off the row.
+      operationId: login_api_v1_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/me:
+    get:
+      tags:
+      - auth
+      summary: Who am I
+      operationId: me_api_v1_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOut'
+      security:
+      - HTTPBearer: []
+  /api/v1/me/password:
+    post:
+      tags:
+      - auth
+      summary: Change my own password
+      operationId: change_password_api_v1_me_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Body_change_password_api_v1_me_password_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/users:
+    post:
+      tags:
+      - users
+      summary: Create a staff (or admin) account — admin only
+      description: Send as multipart/form-data. Default role is `staff`; pass `role=admin` for another
+        admin.
+      operationId: create_user_api_v1_users_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - users
+      summary: List users
+      operationId: list_users_api_v1_users_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 10
+          title: Limit
+      - name: role
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/Role'
+          - type: 'null'
+          title: Role
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: match name or email
+          title: Q
+        description: match name or email
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_UserOut_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/users/{user_id}:
+    get:
+      tags:
+      - users
+      summary: Get one user
+      operationId: get_user_api_v1_users__user_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: User Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - users
+      summary: Update a user — admin only
+      operationId: update_user_api_v1_users__user_id__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: User Id
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - users
+      summary: Delete a user — admin only
+      operationId: delete_user_api_v1_users__user_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: User Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rooms:
+    post:
+      tags:
+      - rooms
+      summary: Create a room
+      operationId: create_room_api_v1_rooms_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - rooms
+      summary: List rooms with filters
+      operationId: list_rooms_api_v1_rooms_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 10
+          title: Limit
+      - name: is_available
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: true = vacant
+          title: Is Available
+        description: true = vacant
+      - name: min_price
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Min Price
+      - name: max_price
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Max Price
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Q
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_RoomOut_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rooms/reports/monthly:
+    get:
+      tags:
+      - rooms
+      summary: Billed vs collected for a month
+      operationId: monthly_report_api_v1_rooms_reports_monthly_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: month
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 12
+            minimum: 1
+          - type: 'null'
+          description: defaults to the current month
+          title: Month
+        description: defaults to the current month
+      - name: year
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 2100
+            minimum: 2000
+          - type: 'null'
+          title: Year
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthlyReport'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rooms/{room_id}:
+    get:
+      tags:
+      - rooms
+      summary: Get one room
+      operationId: get_room_api_v1_rooms__room_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: room_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Room Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - rooms
+      summary: Update a room
+      operationId: update_room_api_v1_rooms__room_id__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: room_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Room Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - rooms
+      summary: Delete a room — admin only
+      operationId: delete_room_api_v1_rooms__room_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: room_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Room Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/tenants:
+    post:
+      tags:
+      - tenants
+      summary: Check a tenant into a vacant room
+      description: Supply `email` + `password` to also issue the tenant a login for their own bills.
+      operationId: create_tenant_api_v1_tenants_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - tenants
+      summary: List tenants with filters
+      operationId: list_tenants_api_v1_tenants_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 10
+          title: Limit
+      - name: is_active
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+      - name: room_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Room Id
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: match name or phone
+          title: Q
+        description: match name or phone
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_TenantOut_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/tenants/{tenant_id}:
+    get:
+      tags:
+      - tenants
+      summary: Get one tenant
+      operationId: get_tenant_api_v1_tenants__tenant_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Tenant Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - tenants
+      summary: Check out — frees the room
+      operationId: checkout_api_v1_tenants__tenant_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Tenant Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/invoices/generate:
+    post:
+      tags:
+      - billing
+      summary: Run monthly billing now (same job the scheduler runs on the 1st)
+      description: Idempotent — rooms already invoiced for the period are skipped, so it is safe to re-run.
+      operationId: generate_api_v1_invoices_generate_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - $ref: '#/components/schemas/GenerateRequest'
+              - type: 'null'
+              title: Payload
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/InvoiceOut'
+                type: array
+                title: Response Generate Api V1 Invoices Generate Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/invoices/scheduler-status:
+    get:
+      tags:
+      - billing
+      summary: Scheduler jobs and next run times
+      operationId: scheduler_status_api_v1_invoices_scheduler_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Scheduler Status Api V1 Invoices Scheduler Status Get
+      security:
+      - HTTPBearer: []
+  /api/v1/invoices:
+    get:
+      tags:
+      - billing
+      summary: List invoices (tenants see only their own)
+      operationId: list_invoices_api_v1_invoices_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 10
+          title: Limit
+      - name: month
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 12
+            minimum: 1
+          - type: 'null'
+          title: Month
+      - name: year
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 2100
+            minimum: 2000
+          - type: 'null'
+          title: Year
+      - name: room_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Room Id
+      - name: tenant_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Tenant Id
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/InvoiceStatus'
+          - type: 'null'
+          title: Status
+      - name: overdue
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: true = unpaid and past the due date
+          title: Overdue
+        description: true = unpaid and past the due date
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_InvoiceOut_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/invoices/{invoice_id}:
+    get:
+      tags:
+      - billing
+      summary: One bill, itemised
+      operationId: get_invoice_api_v1_invoices__invoice_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: invoice_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Invoice Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/invoices/{invoice_id}/reading:
+    put:
+      tags:
+      - billing
+      summary: Record end-of-month meters — recomputes the total
+      operationId: record_reading_api_v1_invoices__invoice_id__reading_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: invoice_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Invoice Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReadingUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/invoices/{invoice_id}/payments:
+    post:
+      tags:
+      - billing
+      summary: Take a full or partial payment, in any accepted currency
+      description: '`amount` is denominated in `currency` (the base currency unless given). The balance
+
+        moves by the converted base amount; the tender and the rate stay on the payment row.'
+      operationId: pay_api_v1_invoices__invoice_id__payments_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: invoice_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Invoice Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCreate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /:
+    get:
+      tags:
+      - meta
+      summary: Service info
+      operationId: root__get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Root  Get
+components:
+  schemas:
+    Body_change_password_api_v1_me_password_post:
+      properties:
+        current_password:
+          type: string
+          minLength: 1
+          title: Current Password
+        new_password:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: New Password
+      type: object
+      required:
+      - current_password
+      - new_password
+      title: Body_change_password_api_v1_me_password_post
+    CheckoutResult:
+      properties:
+        message:
+          type: string
+          title: Message
+        tenant:
+          $ref: '#/components/schemas/TenantOut'
+        outstanding:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Outstanding
+      type: object
+      required:
+      - message
+      - tenant
+      - outstanding
+      title: CheckoutResult
+    DeviceInfo:
+      properties:
+        ip:
+          type: string
+          title: Ip
+        os:
+          type: string
+          title: Os
+        browser:
+          type: string
+          title: Browser
+        device:
+          type: string
+          title: Device
+        user_agent:
+          type: string
+          title: User Agent
+      type: object
+      required:
+      - ip
+      - os
+      - browser
+      - device
+      - user_agent
+      title: DeviceInfo
+    GenerateRequest:
+      properties:
+        month:
+          anyOf:
+          - type: integer
+            maximum: 12.0
+            minimum: 1.0
+          - type: 'null'
+          title: Month
+        year:
+          anyOf:
+          - type: integer
+            maximum: 2100.0
+            minimum: 2000.0
+          - type: 'null'
+          title: Year
+      type: object
+      title: GenerateRequest
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    InvoiceOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        room_id:
+          type: integer
+          title: Room Id
+        tenant_id:
+          type: integer
+          title: Tenant Id
+        room_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Room Name
+        tenant_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Name
+        month:
+          type: integer
+          title: Month
+        year:
+          type: integer
+          title: Year
+        room_price:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Room Price
+        electricity_prev:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Electricity Prev
+        electricity_curr:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Electricity Curr
+        electricity_units:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Electricity Units
+        electricity_rate:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Electricity Rate
+        electricity_charge:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Electricity Charge
+        water_prev:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Water Prev
+        water_curr:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Water Curr
+        water_units:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Water Units
+        water_rate:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Water Rate
+        water_charge:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Water Charge
+        amount:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Amount
+        amount_paid:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Amount Paid
+        balance_due:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Balance Due
+        status:
+          $ref: '#/components/schemas/InvoiceStatus'
+        due_date:
+          type: string
+          format: date
+          title: Due Date
+        is_overdue:
+          type: boolean
+          title: Is Overdue
+        reading_recorded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reading Recorded At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        paid_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Paid At
+        payments:
+          items:
+            $ref: '#/components/schemas/PaymentOut'
+          type: array
+          title: Payments
+          default: []
+      type: object
+      required:
+      - id
+      - room_id
+      - tenant_id
+      - room_name
+      - tenant_name
+      - month
+      - year
+      - room_price
+      - electricity_prev
+      - electricity_curr
+      - electricity_units
+      - electricity_rate
+      - electricity_charge
+      - water_prev
+      - water_curr
+      - water_units
+      - water_rate
+      - water_charge
+      - amount
+      - amount_paid
+      - balance_due
+      - status
+      - due_date
+      - is_overdue
+      - reading_recorded_at
+      - created_at
+      - paid_at
+      title: InvoiceOut
+    InvoiceStatus:
+      type: string
+      enum:
+      - pending
+      - partial
+      - paid
+      title: InvoiceStatus
+    LoginRequest:
+      properties:
+        email:
+          type: string
+          format: email
+          title: Email
+        password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Password
+      type: object
+      required:
+      - email
+      - password
+      title: LoginRequest
+    Message:
+      properties:
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - message
+      title: Message
+    MonthlyReport:
+      properties:
+        month:
+          type: integer
+          title: Month
+        year:
+          type: integer
+          title: Year
+        base_currency:
+          type: string
+          title: Base Currency
+        rooms_total:
+          type: integer
+          title: Rooms Total
+        rooms_occupied:
+          type: integer
+          title: Rooms Occupied
+        invoices:
+          type: integer
+          title: Invoices
+        billed:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Billed
+        collected:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Collected
+        outstanding:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Outstanding
+        electricity_units:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Electricity Units
+        water_units:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Water Units
+        tendered:
+          items:
+            $ref: '#/components/schemas/TenderLine'
+          type: array
+          title: Tendered
+          default: []
+      type: object
+      required:
+      - month
+      - year
+      - base_currency
+      - rooms_total
+      - rooms_occupied
+      - invoices
+      - billed
+      - collected
+      - outstanding
+      - electricity_units
+      - water_units
+      title: MonthlyReport
+    Page_InvoiceOut_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/InvoiceOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        limit:
+          type: integer
+          title: Limit
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - limit
+      title: Page[InvoiceOut]
+    Page_RoomOut_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/RoomOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        limit:
+          type: integer
+          title: Limit
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - limit
+      title: Page[RoomOut]
+    Page_TenantOut_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/TenantOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        limit:
+          type: integer
+          title: Limit
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - limit
+      title: Page[TenantOut]
+    Page_UserOut_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/UserOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        limit:
+          type: integer
+          title: Limit
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - limit
+      title: Page[UserOut]
+    PaymentCreate:
+      properties:
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d{0,2}0*$
+          title: Amount
+          description: amount handed over, in `currency`
+        currency:
+          anyOf:
+          - type: string
+            maxLength: 3
+            minLength: 3
+          - type: 'null'
+          title: Currency
+          description: ISO code of the cash handed over; the base currency when omitted
+        fx_rate:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d{0,6}0*$
+          - type: 'null'
+          title: Fx Rate
+          description: units of `currency` per 1 base unit; the configured house rate when omitted
+        method:
+          type: string
+          maxLength: 30
+          title: Method
+          default: cash
+        note:
+          anyOf:
+          - type: string
+            maxLength: 255
+          - type: 'null'
+          title: Note
+      type: object
+      required:
+      - amount
+      title: PaymentCreate
+      description: 'What the tenant handed over.
+
+
+        `amount` is denominated in `currency`, which is the base currency unless stated —
+
+        so an existing base-currency client keeps working unchanged.'
+    PaymentOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        amount:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Amount
+        base_currency:
+          type: string
+          title: Base Currency
+        tendered_amount:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Tendered Amount
+        tendered_currency:
+          type: string
+          title: Tendered Currency
+        fx_rate:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Fx Rate
+        method:
+          type: string
+          title: Method
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+        recorded_by_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Recorded By Id
+        paid_at:
+          type: string
+          format: date-time
+          title: Paid At
+      type: object
+      required:
+      - id
+      - amount
+      - base_currency
+      - tendered_amount
+      - tendered_currency
+      - fx_rate
+      - method
+      - note
+      - recorded_by_id
+      - paid_at
+      title: PaymentOut
+    ReadingUpdate:
+      properties:
+        electricity_curr:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d{0,2}0*$
+          title: Electricity Curr
+          description: kWh on the meter now
+        water_curr:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d{0,2}0*$
+          title: Water Curr
+          description: m3 on the meter now
+      type: object
+      required:
+      - electricity_curr
+      - water_curr
+      title: ReadingUpdate
+      description: Meter faces read at the end of the billed month.
+    Role:
+      type: string
+      enum:
+      - admin
+      - staff
+      - tenant
+      title: Role
+    RoomCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 60
+          minLength: 1
+          title: Name
+        price:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d{0,2}0*$
+          title: Price
+          description: monthly rent
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+      type: object
+      required:
+      - name
+      - price
+      title: RoomCreate
+    RoomOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        name:
+          type: string
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        price:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Price
+        is_available:
+          type: boolean
+          title: Is Available
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - description
+      - price
+      - is_available
+      - created_at
+      - updated_at
+      title: RoomOut
+    RoomUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 60
+            minLength: 1
+          - type: 'null'
+          title: Name
+        price:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d{0,2}0*$
+          - type: 'null'
+          title: Price
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        is_available:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Available
+      type: object
+      title: RoomUpdate
+    TenantCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Name
+        room_id:
+          type: integer
+          title: Room Id
+        email:
+          anyOf:
+          - type: string
+            format: email
+          - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+          - type: string
+            maxLength: 40
+          - type: 'null'
+          title: Phone
+        id_card:
+          anyOf:
+          - type: string
+            maxLength: 60
+          - type: 'null'
+          title: Id Card
+        check_in_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Check In Date
+        password:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 8
+          - type: 'null'
+          title: Password
+        electricity_start:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d{0,2}0*$
+          title: Electricity Start
+          default: '0'
+        water_start:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d{0,2}0*$
+          title: Water Start
+          default: '0'
+      type: object
+      required:
+      - name
+      - room_id
+      title: TenantCreate
+    TenantOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        name:
+          type: string
+          title: Name
+        email:
+          anyOf:
+          - type: string
+            format: email
+          - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Phone
+        id_card:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Id Card
+        photo:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Photo
+        room_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Room Id
+        user_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: User Id
+        is_active:
+          type: boolean
+          title: Is Active
+        check_in_date:
+          type: string
+          format: date
+          title: Check In Date
+        check_out_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Check Out Date
+        electricity_start:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Electricity Start
+        water_start:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Water Start
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        room:
+          anyOf:
+          - $ref: '#/components/schemas/RoomOut'
+          - type: 'null'
+      type: object
+      required:
+      - id
+      - name
+      - email
+      - phone
+      - id_card
+      - photo
+      - room_id
+      - user_id
+      - is_active
+      - check_in_date
+      - check_out_date
+      - electricity_start
+      - water_start
+      - created_at
+      title: TenantOut
+    TenderLine:
+      properties:
+        currency:
+          type: string
+          title: Currency
+        payments:
+          type: integer
+          title: Payments
+        tendered:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Tendered
+        settled:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Settled
+      type: object
+      required:
+      - currency
+      - payments
+      - tendered
+      - settled
+      title: TenderLine
+      description: What was physically taken in one currency, and what it settled to in the base.
+    TokenResponse:
+      properties:
+        access_token:
+          type: string
+          title: Access Token
+        token_type:
+          type: string
+          title: Token Type
+          default: bearer
+        expires_in:
+          type: integer
+          title: Expires In
+        user:
+          $ref: '#/components/schemas/UserOut'
+        info:
+          $ref: '#/components/schemas/DeviceInfo'
+      type: object
+      required:
+      - access_token
+      - expires_in
+      - user
+      - info
+      title: TokenResponse
+    UserCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Name
+        email:
+          type: string
+          format: email
+          title: Email
+        password:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: Password
+        role:
+          $ref: '#/components/schemas/Role'
+          default: staff
+        image:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Image
+          description: jpeg/png/webp, max 5 MB
+      type: object
+      required:
+      - name
+      - email
+      - password
+      title: UserCreate
+      description: Sent as multipart/form-data — `image` is optional and travels in the same request.
+    UserOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        name:
+          type: string
+          title: Name
+        email:
+          type: string
+          format: email
+          title: Email
+        role:
+          $ref: '#/components/schemas/Role'
+        image:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Image
+        is_active:
+          type: boolean
+          title: Is Active
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - name
+      - email
+      - role
+      - image
+      - is_active
+      - created_at
+      title: UserOut
+    UserUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Name
+        email:
+          anyOf:
+          - type: string
+            format: email
+          - type: 'null'
+          title: Email
+        password:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 8
+          - type: 'null'
+          title: Password
+        role:
+          anyOf:
+          - $ref: '#/components/schemas/Role'
+          - type: 'null'
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+        image:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Image
+      type: object
+      title: UserUpdate
+      description: Also multipart/form-data. Omit a field to leave it untouched.
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      description: Paste the access_token from POST /api/v1/login
+      scheme: bearer

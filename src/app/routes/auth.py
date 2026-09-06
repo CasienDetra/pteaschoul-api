@@ -26,7 +26,8 @@ def me(user: CurrentUser) -> UserOut:
     return user
 
 
-@router.post("/me/password", response_model=Message, status_code=status.HTTP_200_OK)
+@router.post("/me/password", response_model=Message, status_code=status.HTTP_200_OK,
+             summary="Change my own password")
 def change_password(
     user: CurrentUser,
     db: DbSession,

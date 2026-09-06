@@ -16,7 +16,8 @@ router = APIRouter(prefix="/rooms", tags=["rooms"])
 DbSession = Annotated[Session, Depends(get_db)]
 
 
-@router.post("", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=RoomOut, status_code=status.HTTP_201_CREATED,
+             summary="Create a room")
 def create_room(_staff: StaffUser, db: DbSession, payload: RoomCreate) -> RoomOut:
     return room_service.create_room(db, payload)
 
@@ -49,12 +50,12 @@ def monthly_report(
     return room_service.monthly_report(db, month or today.month, year or today.year)
 
 
-@router.get("/{room_id}", response_model=RoomOut)
+@router.get("/{room_id}", response_model=RoomOut, summary="Get one room")
 def get_room(room_id: int, _user: CurrentUser, db: DbSession) -> RoomOut:
     return room_service.get_room_or_404(db, room_id)
 
 
-@router.put("/{room_id}", response_model=RoomOut)
+@router.put("/{room_id}", response_model=RoomOut, summary="Update a room")
 def update_room(room_id: int, _staff: StaffUser, db: DbSession, payload: RoomUpdate) -> RoomOut:
     return room_service.update_room(db, room_service.get_room_or_404(db, room_id), payload)
 

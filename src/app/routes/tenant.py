@@ -30,7 +30,7 @@ def create_tenant(_staff: StaffUser, db: DbSession, payload: TenantCreate) -> Te
     return tenant_service.create_tenant(db, payload)
 
 
-@router.get("", response_model=Page[TenantOut])
+@router.get("", response_model=Page[TenantOut], summary="List tenants with filters")
 def list_tenants(
     _staff: StaffUser,
     db: DbSession,
@@ -44,7 +44,7 @@ def list_tenants(
     return Page(items=items, total=total, page=page, limit=limit)
 
 
-@router.get("/{tenant_id}", response_model=TenantOut)
+@router.get("/{tenant_id}", response_model=TenantOut, summary="Get one tenant")
 def get_tenant(tenant_id: int, caller: CurrentUser, db: DbSession) -> TenantOut:
     tenant = tenant_service.get_tenant_or_404(db, tenant_id)
     if caller.role is Role.TENANT and tenant.user_id != caller.id:
